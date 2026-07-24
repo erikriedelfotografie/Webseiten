@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Erik Riedel — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b; --bg-alt:#141416; --surface:#1c1c1f;
+    --line:rgba(243,241,234,0.12); --text:#f2efe6; --text-muted:#8d8b85;
+    --accent:#e8b84b; --danger:#e05a4e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh;}
+  h1,h2,h3{font-family:'Anton',sans-serif;text-transform:uppercase;font-weight:400;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  header{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;
+    padding:1.4rem 2rem;border-bottom:1px solid var(--line);background:var(--bg-alt);
+  }
+  header h1{font-size:1.3rem;letter-spacing:.04em;}
+  header .status{font-size:.75rem;color:var(--text-muted);margin-top:.3rem;}
+  button{
+    font-family:'JetBrains Mono',monospace;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--accent);color:#0a0a0b;border:none;padding:.8rem 1.4rem;border-radius:100px;
+    cursor:pointer;font-weight:700;
+  }
+  button.secondary{background:transparent;color:var(--text);border:1px solid var(--line);}
+  button.danger{background:var(--danger);color:#fff;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .login-screen{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:80vh;text-align:center;gap:1.4rem;padding:2rem;
+  }
+  .login-screen p{color:var(--text-muted);max-width:420px;line-height:1.6;}
+  .layout{display:none;grid-template-columns:280px 1fr;min-height:calc(100vh - 90px);}
+  .layout.active{display:grid;}
+  .sidebar{border-right:1px solid var(--line);padding:1.4rem;background:var(--bg-alt);display:flex;flex-direction:column;gap:1rem;}
+  .sidebar h2{font-size:.9rem;color:var(--accent);}
+  .collection-item{padding:.8rem 1rem;border:1px solid var(--line);border-radius:4px;cursor:pointer;font-size:.85rem;display:flex;flex-direction:column;gap:.2rem;}
+  .collection-item .t{font-weight:600;}
+  .collection-item .y{color:var(--text-muted);font-size:.72rem;font-family:'JetBrains Mono',monospace;}
+  .collection-item.active{border-color:var(--accent);background:rgba(232,184,75,.08);}
+  .main{padding:2rem;overflow-y:auto;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1.6rem;margin-bottom:1.6rem;}
+  .field{margin-bottom:1rem;}
+  .field label{display:block;font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:.5rem;}
+  .field input, .field textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:.95rem;padding:.7rem;}
+  .dropzone{border:2px dashed var(--line);border-radius:6px;padding:2rem;text-align:center;color:var(--text-muted);font-size:.85rem;cursor:pointer;transition:border-color .2s ease;}
+  .dropzone.drag{border-color:var(--accent);color:var(--accent);}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.7rem;margin-top:1rem;}
+  .photo-thumb{position:relative;aspect-ratio:4/3;border-radius:4px;overflow:hidden;border:1px solid var(--line);background-size:cover;background-position:center;}
+  .photo-thumb .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(10,10,11,.8);color:#fff;border:none;display:flex;align-items:center;justify-content:center;font-size:.7rem;cursor:pointer;padding:0;}
+  .about-photo-preview{width:160px;aspect-ratio:4/5;border-radius:4px;background-size:cover;background-position:center;border:1px solid var(--line);margin-bottom:1rem;}
+  .row{display:flex;gap:1rem;flex-wrap:wrap;}
+  .save-bar{position:sticky;bottom:0;background:var(--bg-alt);border-top:1px solid var(--line);padding:1rem 2rem;display:flex;justify-content:flex-end;align-items:center;gap:1rem;}
+  .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--accent);color:#0a0a0b;padding:.9rem 1.4rem;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:.8rem;font-weight:700;opacity:0;transform:translateY(10px);transition:all .3s ease;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateY(0);}
+  .toast.error{background:var(--danger);color:#fff;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Erik Riedel — Admin</h1>
+    <div class="status mono" id="statusText">Nicht eingeloggt</div>
+  </div>
+  <div class="row" id="headerActions"></div>
+</header>
+
+<div class="login-screen" id="loginScreen">
+  <h2 style="font-size:1.6rem;">Anmelden erforderlich</h2>
+  <p>Nur mit deinem Login kommst du hier rein. Klick unten, um dich über Netlify Identity anzumelden.</p>
+  <button id="loginBtn">Login</button>
+</div>
+
+<div class="layout" id="layout">
+  <aside class="sidebar">
+    <h2 class="mono">Sammlungen</h2>
+    <div id="collectionList" style="display:flex;flex-direction:column;gap:.6rem;"></div>
+    <button class="secondary" id="addCollectionBtn">+ Neue Sammlung</button>
+    <hr style="border:none;border-top:1px solid var(--line);margin:.6rem 0;">
+    <h2 class="mono">About-Foto</h2>
+    <div class="about-photo-preview" id="aboutPreview"></div>
+    <button class="secondary" id="aboutUploadBtn">Foto ersetzen</button>
+    <input type="file" id="aboutFileInput" accept="image/*" style="display:none;">
+  </aside>
+  <main class="main">
+    <div id="detailArea"></div>
+  </main>
+</div>
+
+<div class="save-bar" id="saveBar" style="display:none;">
+  <button class="secondary" id="reloadBtn">Neu laden (Änderungen verwerfen)</button>
+  <button id="saveBtn">Änderungen veröffentlichen</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let originalText = '';
+  let currentSha = null;
+  let matches = [];
+  let aboutPhotoDataUrl = '';
+  let selectedIndex = 0;
+
+  const loginScreen = document.getElementById('loginScreen');
+  const layout = document.getElementById('layout');
+  const saveBar = document.getElementById('saveBar');
+  const statusText = document.getElementById('statusText');
+  const headerActions = document.getElementById('headerActions');
+  const toast = document.getElementById('toast');
+
+  function showToast(msg, isError){
+    toast.textContent = msg;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3200);
+  }
+
+  function fileToDataUrl(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ---------- Netlify Identity ----------
+  netlifyIdentity.init();
+
+  netlifyIdentity.on('login', async (user) => {
+    statusText.textContent = `Eingeloggt als ${user.email}`;
+    loginScreen.style.display = 'none';
+    renderHeaderActions(true);
+    await loadSiteFromServer();
+  });
+
+  netlifyIdentity.on('logout', () => {
+    statusText.textContent = 'Nicht eingeloggt';
+    loginScreen.style.display = 'flex';
+    layout.classList.remove('active');
+    saveBar.style.display = 'none';
+    renderHeaderActions(false);
+  });
+
+  netlifyIdentity.on('init', (user) => {
+    if (user) {
+      statusText.textContent = `Eingeloggt als ${user.email}`;
+      loginScreen.style.display = 'none';
+      renderHeaderActions(true);
+      loadSiteFromServer();
+    } else {
+      renderHeaderActions(false);
+    }
+  });
+
+  function renderHeaderActions(loggedIn){
+    headerActions.innerHTML = loggedIn
+      ? `<button class="secondary" id="logoutBtn">Logout</button>`
+      : '';
+    if (loggedIn){
+      document.getElementById('logoutBtn').addEventListener('click', () => netlifyIdentity.logout());
+    }
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', () => netlifyIdentity.open());
+
+  // ---------- Server-Kommunikation ----------
+  async function authHeader(){
+    const user = netlifyIdentity.currentUser();
+    if (!user) throw new Error('Nicht eingeloggt.');
+    const token = await user.jwt();
+    return { 'Authorization': `Bearer ${token}` };
+  }
+
+  async function loadSiteFromServer(){
+    try{
+      const headers = await authHeader();
+      const res = await fetch('/.netlify/functions/site', { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`);
+      originalText = data.content;
+      currentSha = data.sha;
+      parseFile(originalText);
+      selectedIndex = 0;
+      layout.classList.add('active');
+      saveBar.style.display = 'flex';
+      renderAll();
+    } catch(err){
+      console.error(err);
+      showToast('Laden fehlgeschlagen: ' + err.message, true);
+    }
+  }
+
+  function parseFile(text){
+    const matchesRegex = /const matches = (\[[\s\S]*?\n  \]);/;
+    const m = text.match(matchesRegex);
+    if (!m){
+      showToast('Konnte die Sammlungen nicht finden.', true);
+      matches = [];
+    } else {
+      try {
+        matches = new Function('return ' + m[1])();
+        matches.forEach(item => { if (!item.photos) item.photos = []; });
+      } catch(e){
+        console.error(e);
+        showToast('Sammlungen konnten nicht gelesen werden (Format-Fehler).', true);
+        matches = [];
+      }
+    }
+    const aboutRegex = /class="about-photo" style="background-image:url\('([^']*)'\)/;
+    const a = text.match(aboutRegex);
+    aboutPhotoDataUrl = a ? a[1] : '';
+  }
+
+  function serializeMatches(){
+    const lines = matches.map(m => {
+      return `    { title: ${JSON.stringify(m.title)}, tag: ${JSON.stringify(m.tag)}, year: ${JSON.stringify(m.year)}, photos: ${JSON.stringify(m.photos || [])} },`;
+    });
+    return '[\n' + lines.join('\n') + '\n  ]';
+  }
+
+  function buildUpdatedText(){
+    let text = originalText;
+    const matchesRegex = /const matches = (\[[\s\S]*?\n  \]);/;
+    if (matchesRegex.test(text)){
+      text = text.replace(matchesRegex, `const matches = ${serializeMatches()};`);
+    }
+    const aboutRegex = /(class="about-photo" style="background-image:url\(')([^']*)('\))/;
+    if (aboutRegex.test(text) && aboutPhotoDataUrl){
+      text = text.replace(aboutRegex, `$1${aboutPhotoDataUrl}$3`);
+    }
+    return text;
+  }
+
+  async function saveToServer(){
+    try{
+      const headers = { ...(await authHeader()), 'Content-Type': 'application/json' };
+      const text = buildUpdatedText();
+      const res = await fetch('/.netlify/functions/site', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: text, sha: currentSha })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`);
+      originalText = text;
+      currentSha = data.sha;
+      showToast('Veröffentlicht ✓ — Netlify baut jetzt neu');
+    } catch(err){
+      console.error(err);
+      showToast('Speichern fehlgeschlagen: ' + err.message, true);
+    }
+  }
+
+  // ---------- UI-Rendering (Sammlungen, Fotos, About) ----------
+  function renderAll(){ renderCollectionList(); renderDetail(); renderAboutPreview(); }
+
+  function renderCollectionList(){
+    const list = document.getElementById('collectionList');
+    list.innerHTML = '';
+    matches.forEach((m, i) => {
+      const div = document.createElement('div');
+      div.className = 'collection-item' + (i === selectedIndex ? ' active' : '');
+      div.innerHTML = `<span class="t">${m.title || '(ohne Titel)'}</span><span class="y mono">${m.tag || ''} · ${m.year || ''} · ${(m.photos||[]).length} Foto(s)</span>`;
+      div.addEventListener('click', () => { selectedIndex = i; renderAll(); });
+      list.appendChild(div);
+    });
+  }
+
+  function renderAboutPreview(){
+    const el = document.getElementById('aboutPreview');
+    if (aboutPhotoDataUrl){
+      el.style.backgroundImage = `url('${aboutPhotoDataUrl}')`;
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+    } else {
+      el.style.background = 'linear-gradient(150deg,#232019,#0d0d0e)';
+    }
+  }
+
+  function renderDetail(){
+    const area = document.getElementById('detailArea');
+    if (!matches.length){
+      area.innerHTML = `<div class="card">Noch keine Sammlung vorhanden. Leg mit "+ Neue Sammlung" los.</div>`;
+      return;
+    }
+    const m = matches[selectedIndex];
+    area.innerHTML = `
+      <div class="card">
+        <div class="field"><label>Titel / Einsatz</label><input type="text" id="fTitle" value="${(m.title||'').replace(/"/g,'&quot;')}"></div>
+        <div class="row">
+          <div class="field" style="flex:1;"><label>Kategorie (Tag)</label><input type="text" id="fTag" value="${(m.tag||'').replace(/"/g,'&quot;')}"></div>
+          <div class="field" style="flex:1;"><label>Jahr</label><input type="text" id="fYear" value="${(m.year||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <button class="danger secondary" id="deleteCollectionBtn">Diese Sammlung löschen</button>
+      </div>
+      <div class="card">
+        <h2 style="font-size:.95rem;margin-bottom:1rem;color:var(--accent);">Fotos dieser Sammlung</h2>
+        <div class="dropzone" id="dropzone">Fotos hier reinziehen oder klicken zum Auswählen</div>
+        <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
+        <div class="photo-grid" id="photoGrid"></div>
+      </div>
+    `;
+    document.getElementById('fTitle').addEventListener('input', e => { m.title = e.target.value; renderCollectionList(); });
+    document.getElementById('fTag').addEventListener('input', e => { m.tag = e.target.value; renderCollectionList(); });
+    document.getElementById('fYear').addEventListener('input', e => { m.year = e.target.value; renderCollectionList(); });
+    document.getElementById('deleteCollectionBtn').addEventListener('click', () => {
+      if (!confirm('Diese Sammlung wirklich löschen?')) return;
+      matches.splice(selectedIndex, 1);
+      selectedIndex = Math.max(0, selectedIndex - 1);
+      renderAll();
+    });
+
+    const dropzone = document.getElementById('dropzone');
+    const photoInput = document.getElementById('photoInput');
+    dropzone.addEventListener('click', () => photoInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+    dropzone.addEventListener('drop', async e => {
+      e.preventDefault(); dropzone.classList.remove('drag');
+      await addPhotos(e.dataTransfer.files, m);
+    });
+    photoInput.addEventListener('change', async e => {
+      await addPhotos(e.target.files, m);
+      photoInput.value = '';
+    });
+    renderPhotoGrid(m);
+  }
+
+  async function addPhotos(fileList, m){
+    if (!m.photos) m.photos = [];
+    for (const file of fileList){
+      if (!file.type.startsWith('image/')) continue;
+      m.photos.push(await fileToDataUrl(file));
+    }
+    renderPhotoGrid(m);
+    renderCollectionList();
+  }
+
+  function renderPhotoGrid(m){
+    const grid = document.getElementById('photoGrid');
+    grid.innerHTML = '';
+    (m.photos || []).forEach((src, i) => {
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.style.backgroundImage = `url('${src}')`;
+      div.innerHTML = `<button class="rm" title="Entfernen">✕</button>`;
+      div.querySelector('.rm').addEventListener('click', () => {
+        m.photos.splice(i, 1);
+        renderPhotoGrid(m);
+        renderCollectionList();
+      });
+      grid.appendChild(div);
+    });
+  }
+
+  document.getElementById('addCollectionBtn').addEventListener('click', () => {
+    matches.unshift({ title: 'Neue Sammlung', tag: 'Fußball', year: new Date().getFullYear().toString(), photos: [] });
+    selectedIndex = 0;
+    renderAll();
+  });
+
+  document.getElementById('aboutUploadBtn').addEventListener('click', () => document.getElementById('aboutFileInput').click());
+  document.getElementById('aboutFileInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    aboutPhotoDataUrl = await fileToDataUrl(file);
+    renderAboutPreview();
+    e.target.value = '';
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', saveToServer);
+  document.getElementById('reloadBtn').addEventListener('click', () => {
+    if (!confirm('Ungespeicherte Änderungen verwerfen und neu laden?')) return;
+    loadSiteFromServer();
+  });
+</script>
+
+</body>
+</html>
