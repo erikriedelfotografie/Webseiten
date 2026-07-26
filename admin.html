@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Erik Riedel — Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <style>
   :root{
     --bg:#0a0a0b; --bg-alt:#141416; --surface:#1c1c1f;
@@ -73,8 +72,19 @@
 
 <div class="login-screen" id="loginScreen">
   <h2 style="font-size:1.6rem;">Anmelden erforderlich</h2>
-  <p>Nur mit deinem Login kommst du hier rein. Klick unten, um dich über Netlify Identity anzumelden.</p>
-  <button id="loginBtn">Login</button>
+  <p>Nur mit deinem Login kommst du hier rein.</p>
+  <form id="loginForm" style="display:flex;flex-direction:column;gap:1rem;width:280px;">
+    <div class="field" style="text-align:left;">
+      <label for="li-email">E-Mail</label>
+      <input id="li-email" type="email" required>
+    </div>
+    <div class="field" style="text-align:left;">
+      <label for="li-password">Passwort</label>
+      <input id="li-password" type="password" required>
+    </div>
+    <button type="submit">Login</button>
+    <p id="loginError" style="display:none;color:var(--danger);font-size:.82rem;"></p>
+  </form>
 </div>
 
 <div class="layout" id="layout">
@@ -100,7 +110,9 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+  import { login, logout, getUser, handleAuthCallback } from 'https://esm.sh/@netlify/identity';
+
   let originalText = '';
   let currentSha = null;
   let matches = [];
@@ -130,51 +142,83 @@
     });
   }
 
-  // ---------- Netlify Identity ----------
-  netlifyIdentity.init();
-
-  netlifyIdentity.on('login', async (user) => {
-    statusText.textContent = `Eingeloggt als ${user.email}`;
-    loginScreen.style.display = 'none';
-    renderHeaderActions(true);
-    await loadSiteFromServer();
-  });
-
-  netlifyIdentity.on('logout', () => {
-    statusText.textContent = 'Nicht eingeloggt';
-    loginScreen.style.display = 'flex';
-    layout.classList.remove('active');
-    saveBar.style.display = 'none';
-    renderHeaderActions(false);
-  });
-
-  netlifyIdentity.on('init', (user) => {
-    if (user) {
-      statusText.textContent = `Eingeloggt als ${user.email}`;
-      loginScreen.style.display = 'none';
-      renderHeaderActions(true);
-      loadSiteFromServer();
-    } else {
-      renderHeaderActions(false);
-    }
-  });
+  // ---------- Netlify Identity (neues @netlify/identity Paket) ----------
+  let currentUser = null;
 
   function renderHeaderActions(loggedIn){
     headerActions.innerHTML = loggedIn
       ? `<button class="secondary" id="logoutBtn">Logout</button>`
       : '';
     if (loggedIn){
-      document.getElementById('logoutBtn').addEventListener('click', () => netlifyIdentity.logout());
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await logout();
+        currentUser = null;
+        statusText.textContent = 'Nicht eingeloggt';
+        loginScreen.style.display = 'flex';
+        layout.classList.remove('active');
+        saveBar.style.display = 'none';
+        renderHeaderActions(false);
+      });
     }
   }
 
-  document.getElementById('loginBtn').addEventListener('click', () => netlifyIdentity.open());
+  async function onLoggedIn(user){
+    currentUser = user;
+    statusText.textContent = `Eingeloggt als ${user.email}`;
+    loginScreen.style.display = 'none';
+    renderHeaderActions(true);
+    await loadSiteFromServer();
+  }
+
+  async function initIdentity(){
+    try {
+      // Verarbeitet automatisch Einladungs-/Bestätigungs-/Recovery-Links in der URL
+      const callbackResult = await handleAuthCallback();
+      if (callbackResult && callbackResult.user) {
+        await onLoggedIn(callbackResult.user);
+        return;
+      }
+    } catch (err) {
+      console.error('handleAuthCallback error', err);
+    }
+
+    try {
+      const user = await getUser();
+      if (user) {
+        await onLoggedIn(user);
+        return;
+      }
+    } catch (err) {
+      console.error('getUser error', err);
+    }
+    renderHeaderActions(false);
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('li-email').value.trim();
+    const password = document.getElementById('li-password').value;
+    const errorEl = document.getElementById('loginError');
+    errorEl.style.display = 'none';
+    try {
+      const user = await login(email, password);
+      await onLoggedIn(user);
+    } catch (err) {
+      console.error(err);
+      errorEl.textContent = 'Login fehlgeschlagen: ' + (err.message || 'E-Mail oder Passwort falsch.');
+      errorEl.style.display = 'block';
+    }
+  });
+
+  initIdentity();
 
   // ---------- Server-Kommunikation ----------
   async function authHeader(){
-    const user = netlifyIdentity.currentUser();
+    if (!currentUser) throw new Error('Nicht eingeloggt.');
+    const user = await getUser();
     if (!user) throw new Error('Nicht eingeloggt.');
-    const token = await user.jwt();
+    const token = user.token?.access_token || (typeof user.jwt === 'function' ? await user.jwt() : null);
+    if (!token) throw new Error('Konnte keinen Zugangs-Token ermitteln.');
     return { 'Authorization': `Bearer ${token}` };
   }
 
