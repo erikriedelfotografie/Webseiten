@@ -672,7 +672,12 @@
     { title: "FC Memmingen – FC Nürnberg II", tag: "Fußball", year: "2025" },
   ];
 
-  // Build ticker (duplicated once for seamless loop)
+  const categories = [
+    { name: "Fußball", photos: [] },
+    { name: "Events", photos: [] },
+    { name: "Architektur", photos: [] },
+    { name: "Luftfahrt", photos: [] },
+  ];
   const tickerTrack = document.getElementById('tickerTrack');
   const tickerHTML = matches.map(m =>
     `<span>${m.title} <span class="yr">/ ${m.year}</span></span><span class="dot">●</span>`
@@ -736,28 +741,21 @@
     });
   });
 
-  // Kategorie-Pills (Fußball/Events/Architektur/Luftfahrt) -> kleine gefilterte Galerie
-  function openCategoryModal(category){
-    const items = matches.filter(m => m.tag && m.tag.toLowerCase() === category.toLowerCase());
-    const thumbs = items.map((m, i) => {
-      const idx = matches.indexOf(m);
-      const bg = (m.photos && m.photos[0])
-        ? `background-image:url('${m.photos[0]}');background-size:cover;background-position:center;`
-        : '';
-      return `
-        <div class="modal-shot" style="${bg} cursor:pointer;display:flex;align-items:flex-end;padding:.6rem;" data-goto="${idx}">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--accent);background:rgba(10,10,11,.75);padding:.2rem .4rem;border-radius:2px;">${m.title}</span>
-        </div>`;
-    }).join('');
+  // Kategorie-Pills (Fußball/Events/Architektur/Luftfahrt) -> eigene Mini-Galerie
+  function openCategoryModal(categoryName){
+    const cat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+    const photos = (cat && cat.photos) || [];
+    const shots = photos.length
+      ? photos.map(src => `<div class="modal-shot" style="background-image:url('${src}');background-size:cover;background-position:center;"></div>`).join('')
+      : Array.from({ length: 8 }, (_, i) =>
+          `<div class="modal-shot">Foto ${String(i + 1).padStart(2, '0')}</div>`
+        ).join('');
     openModal(`
       <div class="modal-eyebrow">Kategorie</div>
-      <h3 class="modal-title">${category}</h3>
-      <p class="modal-copy">${items.length ? 'Ausgewählte Einsätze aus dieser Kategorie — auf ein Bild klicken für die volle Galerie.' : 'Für diese Kategorie sind aktuell noch keine Einsätze hinterlegt.'}</p>
-      <div class="modal-gallery">${thumbs}</div>
+      <h3 class="modal-title">${categoryName}</h3>
+      <p class="modal-copy">${photos.length ? '' : `Hier entsteht die Galerie für "${categoryName}". Sobald Fotos hochgeladen werden, ersetzen sie diese Platzhalter.`}</p>
+      <div class="modal-gallery">${shots}</div>
     `);
-    modalBody.querySelectorAll('[data-goto]').forEach(el => {
-      el.addEventListener('click', () => openWorkModal(matches[+el.dataset.goto]));
-    });
   }
   document.querySelectorAll('.focus-pill').forEach(pill => {
     pill.addEventListener('click', () => openCategoryModal(pill.dataset.category));
