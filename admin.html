@@ -179,6 +179,7 @@
       // Verarbeitet automatisch Einladungs-/Bestätigungs-/Recovery-Links in der URL
       const callbackResult = await handleAuthCallback();
       if (callbackResult && callbackResult.user) {
+        console.log('DEBUG callbackResult.user:', JSON.stringify(callbackResult.user, null, 2));
         await onLoggedIn(callbackResult.user);
         return;
       }
@@ -189,6 +190,8 @@
     try {
       const user = await getUser();
       if (user) {
+        console.log('DEBUG getUser() result:', JSON.stringify(user, null, 2));
+        console.log('DEBUG document.cookie:', document.cookie);
         await onLoggedIn(user);
         return;
       }
