@@ -97,6 +97,9 @@
     <div class="about-photo-preview" id="aboutPreview"></div>
     <button class="secondary" id="aboutUploadBtn">Foto ersetzen</button>
     <input type="file" id="aboutFileInput" accept="image/*" style="display:none;">
+    <hr style="border:none;border-top:1px solid var(--line);margin:.6rem 0;">
+    <h2 class="mono">Lightroom</h2>
+    <div id="lightroomPanel"></div>
   </aside>
   <main class="main">
     <div id="detailArea"></div>
@@ -168,6 +171,7 @@
     loginScreen.style.display = 'none';
     renderHeaderActions(true);
     await loadSiteFromServer();
+    await initLightroom();
   }
 
   async function initIdentity(){
@@ -424,6 +428,128 @@
     if (!confirm('Ungespeicherte Änderungen verwerfen und neu laden?')) return;
     loadSiteFromServer();
   });
+
+  // ---------- Lightroom ----------
+  const LR_CLIENT_ID = '91b1b8176765455c9866422b2428c2f0';
+  const LR_REDIRECT_URI = window.location.origin + '/admin.html';
+  const LR_SCOPES = 'openid,lr_partner_apis,offline_access';
+
+  let lrToken = localStorage.getItem('lr_access_token') || null;
+  let lrCatalogId = null;
+
+  function lrAuthUrl(){
+    const params = new URLSearchParams({
+      client_id: LR_CLIENT_ID,
+      scope: LR_SCOPES,
+      response_type: 'code',
+      redirect_uri: LR_REDIRECT_URI,
+    });
+    return `https://ims-na1.adobelogin.com/ims/authorize/v2?${params.toString()}`;
+  }
+
+  async function initLightroom(){
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      try {
+        const res = await fetch(`/.netlify/functions/lightroom-exchange?code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        if (data.access_token) {
+          lrToken = data.access_token;
+          localStorage.setItem('lr_access_token', lrToken);
+          if (data.refresh_token) localStorage.setItem('lr_refresh_token', data.refresh_token);
+          showToast('Mit Lightroom verbunden ✓');
+        } else {
+          showToast('Lightroom-Verbindung fehlgeschlagen: ' + (data.error || ''), true);
+        }
+      } catch(err){
+        console.error(err);
+        showToast('Lightroom-Verbindung fehlgeschlagen.', true);
+      } finally {
+        window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      }
+    }
+    renderLightroomPanel();
+  }
+
+  function renderLightroomPanel(){
+    const el = document.getElementById('lightroomPanel');
+    if (!lrToken){
+      el.innerHTML = `<a class="secondary" style="display:block;text-align:center;text-decoration:none;padding:.6rem;" href="${lrAuthUrl()}">Mit Lightroom verbinden</a>`;
+      return;
+    }
+    el.innerHTML = `
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:.6rem;">✓ Mit Lightroom verbunden</div>
+      <button class="secondary" id="lrLoadAlbumsBtn" style="width:100%;">Alben laden</button>
+      <div id="lrAlbumList" style="display:flex;flex-direction:column;gap:.4rem;margin-top:.6rem;"></div>
+      <button class="secondary" id="lrDisconnectBtn" style="width:100%;margin-top:.6rem;font-size:.72rem;">Verbindung trennen</button>
+    `;
+    document.getElementById('lrLoadAlbumsBtn').addEventListener('click', loadLightroomAlbums);
+    document.getElementById('lrDisconnectBtn').addEventListener('click', () => {
+      lrToken = null;
+      localStorage.removeItem('lr_access_token');
+      localStorage.removeItem('lr_refresh_token');
+      renderLightroomPanel();
+    });
+  }
+
+  async function loadLightroomAlbums(){
+    const listEl = document.getElementById('lrAlbumList');
+    listEl.innerHTML = 'Lade Alben…';
+    try {
+      const res = await fetch('/.netlify/functions/lightroom-albums', {
+        headers: { Authorization: `Bearer ${lrToken}` }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        listEl.innerHTML = `<div style="color:var(--danger);font-size:.75rem;">${(data && data.error) || 'Fehler beim Laden.'}</div>`;
+        return;
+      }
+      lrCatalogId = data.catalogId;
+      if (!data.albums.length){
+        listEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);">Keine Alben gefunden.</div>';
+        return;
+      }
+      listEl.innerHTML = data.albums.map(a => `
+        <div style="border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:.78rem;">
+          <div style="margin-bottom:.4rem;">${a.name} <span style="color:var(--muted);">(${a.assetCount})</span></div>
+          <button class="secondary lr-import-btn" data-album-id="${a.id}" style="width:100%;font-size:.7rem;">In aktuelle Sammlung importieren</button>
+        </div>
+      `).join('');
+      listEl.querySelectorAll('.lr-import-btn').forEach(btn => {
+        btn.addEventListener('click', () => importLightroomAlbum(btn.dataset.albumId));
+      });
+    } catch(err){
+      console.error(err);
+      listEl.innerHTML = `<div style="color:var(--danger);font-size:.75rem;">Fehler: ${err.message}</div>`;
+    }
+  }
+
+  async function importLightroomAlbum(albumId){
+    if (!matches.length){
+      showToast('Erst eine Sammlung anlegen/auswählen.', true);
+      return;
+    }
+    showToast('Importiere Fotos…');
+    try {
+      const res = await fetch(`/.netlify/functions/lightroom-import?catalogId=${encodeURIComponent(lrCatalogId)}&albumId=${encodeURIComponent(albumId)}&limit=8`, {
+        headers: { Authorization: `Bearer ${lrToken}` }
+      });
+      const data = await res.json();
+      if (!res.ok){
+        showToast((data && data.error) || 'Import fehlgeschlagen.', true);
+        return;
+      }
+      const m = matches[selectedIndex];
+      m.photos = [...(m.photos || []), ...data.photos];
+      renderDetail();
+      renderCollectionList();
+      showToast(`${data.count} Foto(s) importiert in "${m.title}" ✓`);
+    } catch(err){
+      console.error(err);
+      showToast('Import fehlgeschlagen: ' + err.message, true);
+    }
+  }
 </script>
 
 </body>
