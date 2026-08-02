@@ -217,12 +217,15 @@
   initIdentity();
 
   // ---------- Server-Kommunikation ----------
+  function getNfJwtFromCookie(){
+    const match = document.cookie.match(/(?:^|;\s*)nf_jwt=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   async function authHeader(){
     if (!currentUser) throw new Error('Nicht eingeloggt.');
-    const user = await getUser();
-    if (!user) throw new Error('Nicht eingeloggt.');
-    const token = user.token?.access_token || (typeof user.jwt === 'function' ? await user.jwt() : null);
-    if (!token) throw new Error('Konnte keinen Zugangs-Token ermitteln.');
+    const token = getNfJwtFromCookie();
+    if (!token) throw new Error('Konnte keinen Zugangs-Token ermitteln (nf_jwt-Cookie nicht gefunden).');
     return { 'Authorization': `Bearer ${token}` };
   }
 
